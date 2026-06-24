@@ -1,0 +1,12 @@
+[package]
+name = "wicked-orchestration"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Event-driven work orchestration on the shared wicked-estate store — workflow/phase reducer with a structural gate veto (a denied phase cannot reach approved by any route). Programs against apps-core; no governance dep (lane-disjoint)."
+
+[dependencies]
+apps-core = { path = "../apps-core", version = "0.1.0" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
