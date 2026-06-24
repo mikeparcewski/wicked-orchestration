@@ -1,6 +1,10 @@
 # ADR-0002 — One reducer, two surfaces: skills and agent hooks
 
+> **Status: Not yet implemented (2026-06-24)** — shipped as a Rust library crate; the skill/hook surface is future.
+
 **Status:** Accepted (design). **Date:** 2026-06-23.
+
+> **What shipped instead.** No skill or hook surface exists yet. The shipped artifact is a Rust library crate exposing `apply_event` / `apply_gate` over the shared estate store — there are no `skills/<skill>/SKILL.md` files, no `wicked-orchestration-call` CLI, and no `Stop` / `PreToolUse` hooks in the repo. The *intent* the decision protects — one reducer and one `ALLOWED_TRANSITIONS`, so the same command yields the same state regardless of caller — is already satisfied at the library boundary (every write routes through the single-writer `apply_event`). When the skill/hook surface is built, it must dispatch into that same function; this ADR is the standing design for that work.
 
 ## Context
 

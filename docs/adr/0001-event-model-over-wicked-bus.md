@@ -1,6 +1,10 @@
 # ADR-0001 — The event model rides on wicked-bus; orchestration is a projecting consumer
 
+> **Status: Superseded (2026-06-24)** — the bus is used COARSE + off the hot path (counts/ids, trigger→re-query); the real coordination is the in-process shared estate store, not a synchronous poll-bus. See README/ARCHITECTURE.
+
 **Status:** Accepted (design). **Date:** 2026-06-23.
+
+> **What shipped instead.** The crate is a Rust library on the shared apps-core `SqliteStore`, not a bus-polling consumer. There is no `wicked-bus` dependency, no `register`/`poll`/`ack` loop, no durable cursor, and no transactional outbox: the reducer reads and writes the same in-process store, so the projection *is* the coordination point. The bus survives only as a coarse, fire-and-forget emit (`wicked.orchestration.phase_transitioned`, counts/ids only) on a real transition — a trigger to re-query, never a synchronous round-trip on the path. Idempotency is real and shipped, but as a per-event marker node (`orchestration_processed_event`) keyed on the event id, not a `(subscriberId, event.id)` ledger against bus delivery. The `command_iq` discipline below (commands → durable fact → projection, single idempotent writer) holds; its *transport* (the bus on the path) does not.
 
 ## Context
 
