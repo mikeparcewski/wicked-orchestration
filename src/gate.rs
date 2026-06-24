@@ -100,12 +100,11 @@ pub fn apply_gate<S: wicked_apps_core::GraphRead + wicked_apps_core::GraphWrite>
     }
 
     // Conditions ride onto the phase so a downstream hook/skill can enforce them.
-    let obligations: Vec<String> =
-        if resolved == PhaseStatus::ApprovedWithConditions {
-            claim.map(|c| c.obligations.clone()).unwrap_or_default()
-        } else {
-            Vec::new()
-        };
+    let obligations: Vec<String> = if resolved == PhaseStatus::ApprovedWithConditions {
+        claim.map(|c| c.obligations.clone()).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
 
     // Drive the transition through the single-writer reducer AND persist the governing verdict
     // (`gate_decision`). Persisting it is what makes the gate STRUCTURAL: once `Deny` is on the

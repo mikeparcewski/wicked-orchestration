@@ -44,7 +44,11 @@ pub const ALLOWED_TRANSITIONS: &[(PhaseStatus, PhaseStatus, Option<&str>)] = &[
         PhaseStatus::ReadyForGate,
         Some("wicked.phase.ready-for-gate"),
     ),
-    (PhaseStatus::AwaitingDeliverables, PhaseStatus::Skipped, None),
+    (
+        PhaseStatus::AwaitingDeliverables,
+        PhaseStatus::Skipped,
+        None,
+    ),
     // ready_for_gate
     (PhaseStatus::ReadyForGate, PhaseStatus::GateRunning, None),
     (PhaseStatus::ReadyForGate, PhaseStatus::Skipped, None),

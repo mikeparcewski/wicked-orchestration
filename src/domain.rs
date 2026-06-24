@@ -8,11 +8,11 @@
 //! recoverable from `Node.name` is stored explicitly in `Node.metadata` (the estate contract:
 //! `to_node` MUST be lossless w.r.t. `from_node`).
 
+use serde::{Deserialize, Serialize};
 use wicked_apps_core::{
     synthetic_symbol, Decision, FromNode, Language, Location, Node, NodeKind, Span, ToNode, PHASE,
     SYMBOL_SCHEME, WORKFLOW,
 };
-use serde::{Deserialize, Serialize};
 
 /// The phase state machine's states (ARCHITECTURE §4 / `reducer.mjs`). Serialized to/from
 /// `Node.metadata` and the bus as the prototype's snake_case strings (`pending`, `in_progress`, …)
@@ -52,7 +52,10 @@ impl PhaseStatus {
     /// Is this an approving terminal status? A persisted veto (`gate_decision = Deny`) forbids any
     /// transition INTO one of these — the structural enforcement of ADR-0003 (`reject ⇒ ¬approved`).
     pub fn is_approving(self) -> bool {
-        matches!(self, PhaseStatus::Approved | PhaseStatus::ApprovedWithConditions)
+        matches!(
+            self,
+            PhaseStatus::Approved | PhaseStatus::ApprovedWithConditions
+        )
     }
 }
 

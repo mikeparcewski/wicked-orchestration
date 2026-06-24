@@ -31,10 +31,10 @@ pub mod transitions;
 
 pub use domain::{Phase, PhaseStatus, Workflow};
 pub use gate::{apply_gate, resolve_gate, GateOutcome, EV_PHASE_TRANSITIONED};
-pub use reducer::{apply_event, get_phase, is_processed, put_phase, ApplyOutcome, Event, Transition};
-pub use transitions::{
-    emitted_event_type_for, is_legal_transition, ALLOWED_TRANSITIONS,
+pub use reducer::{
+    apply_event, get_phase, is_processed, put_phase, ApplyOutcome, Event, Transition,
 };
+pub use transitions::{emitted_event_type_for, is_legal_transition, ALLOWED_TRANSITIONS};
 
 /// Crate identity smoke.
 pub fn health() -> &'static str {
@@ -44,9 +44,7 @@ pub fn health() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wicked_apps_core::{
-        ConformanceClaim, Decision, FromNode, GraphWrite, SqliteStore, ToNode,
-    };
+    use wicked_apps_core::{ConformanceClaim, Decision, FromNode, GraphWrite, SqliteStore, ToNode};
 
     // ── Test helpers ─────────────────────────────────────────────────────────
 
@@ -92,9 +90,12 @@ mod tests {
         .into_iter()
         .enumerate()
         {
-            let out = apply_event(s, &Event::transition(format!("ev-setup-{i}"), phase_id, to))
-                .unwrap();
-            assert!(out.applied, "setup transition to {to:?} must apply: {out:?}");
+            let out =
+                apply_event(s, &Event::transition(format!("ev-setup-{i}"), phase_id, to)).unwrap();
+            assert!(
+                out.applied,
+                "setup transition to {to:?} must apply: {out:?}"
+            );
         }
         assert_eq!(
             get_phase(s, phase_id).unwrap().unwrap().status,
@@ -145,7 +146,9 @@ mod tests {
         s.upsert_nodes(&[node]).unwrap();
         s.commit_batch().unwrap();
 
-        let fetched = wicked_apps_core::GraphRead::get_node(&s, &symbol).unwrap().unwrap();
+        let fetched = wicked_apps_core::GraphRead::get_node(&s, &symbol)
+            .unwrap()
+            .unwrap();
         let recovered = Workflow::from_node(&fetched).unwrap();
         assert_eq!(original, recovered);
     }
@@ -199,10 +202,7 @@ mod tests {
         assert_eq!(out.transitions.len(), 1);
         assert_eq!(out.transitions[0].from, PhaseStatus::Pending);
         assert_eq!(out.transitions[0].to, PhaseStatus::InProgress);
-        assert_eq!(
-            out.transitions[0].event_type,
-            Some("wicked.phase.started")
-        );
+        assert_eq!(out.transitions[0].event_type, Some("wicked.phase.started"));
         assert_eq!(
             get_phase(&s, phase_id).unwrap().unwrap().status,
             PhaseStatus::InProgress
@@ -215,7 +215,10 @@ mod tests {
         )
         .unwrap();
         assert!(!out.applied);
-        assert_eq!(out.reason.as_deref(), Some("illegal_transition: 'in_progress' -> 'approved'"));
+        assert_eq!(
+            out.reason.as_deref(),
+            Some("illegal_transition: 'in_progress' -> 'approved'")
+        );
         assert_eq!(
             get_phase(&s, phase_id).unwrap().unwrap().status,
             PhaseStatus::InProgress,
@@ -308,14 +311,23 @@ mod tests {
         let out = apply_gate(&mut s, phase_id, Some(&c), "gate-1").unwrap();
         assert_eq!(out.resolved, PhaseStatus::ApprovedWithConditions);
         assert!(out.applied);
-        assert!(out.conditions, "approved_with_conditions must flag conditions=true");
-        assert_eq!(out.obligations, vec!["redact:token", "require:human-approval"]);
+        assert!(
+            out.conditions,
+            "approved_with_conditions must flag conditions=true"
+        );
+        assert_eq!(
+            out.obligations,
+            vec!["redact:token", "require:human-approval"]
+        );
 
         let phase = get_phase(&s, phase_id).unwrap().unwrap();
         assert_eq!(phase.status, PhaseStatus::ApprovedWithConditions);
         assert_eq!(
             phase.obligations,
-            vec!["redact:token".to_string(), "require:human-approval".to_string()],
+            vec![
+                "redact:token".to_string(),
+                "require:human-approval".to_string()
+            ],
             "obligations from the claim must be carried ONTO the phase"
         );
         assert_eq!(phase.gate_decision, Some(Decision::AllowWithConditions));

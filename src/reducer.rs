@@ -51,11 +51,7 @@ pub struct Event {
 
 impl Event {
     /// A minimal transition event: id, phase, target status; no `from` assertion, no extras.
-    pub fn transition(
-        id: impl Into<String>,
-        phase_id: impl Into<String>,
-        to: PhaseStatus,
-    ) -> Self {
+    pub fn transition(id: impl Into<String>, phase_id: impl Into<String>, to: PhaseStatus) -> Self {
         Self {
             id: id.into(),
             phase_id: phase_id.into(),
