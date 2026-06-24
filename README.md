@@ -16,7 +16,7 @@ __      _(_) ___| | _____  __| |       ___  _ __ ___| |__   ___  ___| |_ _ __ __
 - **The structural gate (ADR-0003):** a governance `Deny` is **persisted on the phase**; the reducer refuses *any* approving transition while that marker is set — **before** the transition table — so `reject ⇒ ¬approved` holds by any route/race, not just the gate's happy path. (Mutation-proved: disable the veto and the falsifier test goes red.)
 - The bus is used **coarse + off the hot path** (counts/ids only, trigger→re-query); the real coordination is the in-process shared store — *not* a synchronous round-trip through a poll-bus. *(Supersedes the design-era ADR-0001, which assumed the bus on the path.)*
 
-Consumes the [`apps-core`](../apps-core) `ConformanceClaim`; no governance dep (lane-disjoint). See [`ARCHITECTURE.md`](ARCHITECTURE.md).
+Consumes the [`wicked-apps-core`](../wicked-apps-core) `ConformanceClaim`; no governance dep (lane-disjoint). See [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Build
 ```sh

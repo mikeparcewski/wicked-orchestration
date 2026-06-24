@@ -15,7 +15,7 @@
 //!
 //! Single-writer: every write goes through this reducer (and the gate, which routes through it).
 
-use apps_core::{
+use wicked_apps_core::{
     synthetic_symbol, Decision, FromNode, GraphRead, GraphWrite, Language, Location, Node,
     NodeKind, Span, ToNode, SYMBOL_SCHEME,
 };
@@ -125,7 +125,7 @@ fn mark_processed<S: GraphWrite>(store: &mut S, event_id: &str) -> anyhow::Resul
 
 /// Read a phase back from the store by id, or `Ok(None)` if absent.
 pub fn get_phase<S: GraphRead>(store: &S, phase_id: &str) -> anyhow::Result<Option<Phase>> {
-    let sym = synthetic_symbol(apps_core::PHASE, phase_id);
+    let sym = synthetic_symbol(wicked_apps_core::PHASE, phase_id);
     match store.get_node(&sym)? {
         Some(node) => Ok(Some(Phase::from_node(&node)?)),
         None => Ok(None),

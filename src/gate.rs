@@ -1,7 +1,7 @@
 //! Gate precedence — `resolveGate` + `applyGate` ported from `gate.mjs` (ADR-0003).
 //!
 //! Orchestration owns the *transition*; governance owns the *verdict*. The gate is a verdict
-//! CONSUMER, never an author. It consumes an apps-core [`ConformanceClaim`], persists the verdict
+//! CONSUMER, never an author. It consumes an wicked-apps-core [`ConformanceClaim`], persists the verdict
 //! as the phase's `gate_decision` (the HARD veto marker), and resolves the transition through the
 //! single-writer [`crate::reducer`]:
 //!
@@ -13,13 +13,13 @@
 //! | no claim                      | stays `GateRunning` (NEVER silent-approve) |
 //!
 //! NOTE on the decision vocabulary: the prototype's verdict strings were
-//! `deny | reject | allow_with_conditions | allow`. The apps-core [`Decision`] type — the verified
+//! `deny | reject | allow_with_conditions | allow`. The wicked-apps-core [`Decision`] type — the verified
 //! gate input this crate is built against — collapses the hard-veto case to a single `Deny` variant
 //! (there is no separate `Reject`). The hard-veto branch therefore keys on `Decision::Deny`; the
 //! ADR's `reject ⇒ ¬approved` invariant is enforced on that variant.
 
-use apps_core::emit::EmitEvent;
-use apps_core::{ConformanceClaim, Decision};
+use wicked_apps_core::emit::EmitEvent;
+use wicked_apps_core::{ConformanceClaim, Decision};
 
 use crate::domain::PhaseStatus;
 use crate::reducer::{apply_event, get_phase, ApplyOutcome, Event};
@@ -75,7 +75,7 @@ pub struct GateOutcome {
 ///
 /// On a real transition a coarse [`EV_PHASE_TRANSITIONED`] fact is emitted via the shared
 /// fire-and-forget seam (counts / ids only).
-pub fn apply_gate<S: apps_core::GraphRead + apps_core::GraphWrite>(
+pub fn apply_gate<S: wicked_apps_core::GraphRead + wicked_apps_core::GraphWrite>(
     store: &mut S,
     phase_id: &str,
     claim: Option<&ConformanceClaim>,
@@ -142,7 +142,7 @@ pub fn apply_gate<S: apps_core::GraphRead + apps_core::GraphWrite>(
                 "obligation_count": obligations.len(),
             }),
         );
-        let _ = apps_core::emit::emit_event(&evt);
+        let _ = wicked_apps_core::emit::emit_event(&evt);
     }
 
     Ok(GateOutcome {

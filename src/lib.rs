@@ -1,11 +1,11 @@
 //! wicked-orchestration — event-driven work orchestration on the SHARED wicked-estate store.
 //!
 //! A Rust port of the Node prototype (`wicked-orchestration/lib/{store,reducer,gate}.mjs`) onto the
-//! estate graph: a `Workflow` and a `Phase` are estate [`Node`](apps_core::Node)s
+//! estate graph: a `Workflow` and a `Phase` are estate [`Node`](wicked_apps_core::Node)s
 //! (`kind=Other("workflow"|"phase")`, fields in `metadata`), the reducer is the single writer that
 //! advances a phase through the [`ALLOWED_TRANSITIONS`](transitions::ALLOWED_TRANSITIONS) state
 //! machine with idempotent at-least-once delivery, and the gate consumes a governance
-//! [`ConformanceClaim`](apps_core::ConformanceClaim) and resolves the phase transition by ADR-0003
+//! [`ConformanceClaim`](wicked_apps_core::ConformanceClaim) and resolves the phase transition by ADR-0003
 //! precedence.
 //!
 //! ## The structural gate (ADR-0003, the load-bearing invariant)
@@ -21,8 +21,8 @@
 //! - [`reducer`] — `apply_event`, the single-writer reducer (idempotency + veto + validate + project).
 //! - [`gate`] — `resolve_gate` / `apply_gate`, the verdict-consuming gate + coarse emit.
 //!
-//! Built against apps-core (the verified estate API spine); does NOT depend on wicked-governance
-//! (lane-disjoint) — `ConformanceClaim` is the apps-core type, constructed directly by callers.
+//! Built against wicked-apps-core (the verified estate API spine); does NOT depend on wicked-governance
+//! (lane-disjoint) — `ConformanceClaim` is the wicked-apps-core type, constructed directly by callers.
 
 pub mod domain;
 pub mod gate;
@@ -44,7 +44,7 @@ pub fn health() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use apps_core::{
+    use wicked_apps_core::{
         ConformanceClaim, Decision, FromNode, GraphWrite, SqliteStore, ToNode,
     };
 
@@ -123,7 +123,7 @@ mod tests {
         s.upsert_nodes(&[node]).unwrap();
         s.commit_batch().unwrap();
 
-        let fetched = apps_core::GraphRead::get_node(&s, &symbol)
+        let fetched = wicked_apps_core::GraphRead::get_node(&s, &symbol)
             .unwrap()
             .expect("phase node present after upsert");
         let recovered = Phase::from_node(&fetched).expect("from_node ok");
@@ -145,7 +145,7 @@ mod tests {
         s.upsert_nodes(&[node]).unwrap();
         s.commit_batch().unwrap();
 
-        let fetched = apps_core::GraphRead::get_node(&s, &symbol).unwrap().unwrap();
+        let fetched = wicked_apps_core::GraphRead::get_node(&s, &symbol).unwrap().unwrap();
         let recovered = Workflow::from_node(&fetched).unwrap();
         assert_eq!(original, recovered);
     }

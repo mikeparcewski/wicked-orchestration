@@ -1,14 +1,14 @@
 //! Domain types for orchestration — `Workflow` and `Phase` — and their lossless projection onto
-//! the shared estate [`Node`] API via apps-core's [`ToNode`]/[`FromNode`].
+//! the shared estate [`Node`] API via wicked-apps-core's [`ToNode`]/[`FromNode`].
 //!
 //! Ported from the Node prototype (`wicked-orchestration/lib/store.mjs`), but the projection
 //! target is the SHARED estate graph store, not JSON files: a `Workflow` is a
 //! `Node(kind=Other("workflow"))` and a `Phase` is a `Node(kind=Other("phase"))`, both keyed by an
-//! apps-core synthetic [`Symbol`](apps_core::Symbol). Every round-trippable field that is NOT
+//! wicked-apps-core synthetic [`Symbol`](wicked_apps_core::Symbol). Every round-trippable field that is NOT
 //! recoverable from `Node.name` is stored explicitly in `Node.metadata` (the estate contract:
 //! `to_node` MUST be lossless w.r.t. `from_node`).
 
-use apps_core::{
+use wicked_apps_core::{
     synthetic_symbol, Decision, FromNode, Language, Location, Node, NodeKind, Span, ToNode, PHASE,
     SYMBOL_SCHEME, WORKFLOW,
 };
