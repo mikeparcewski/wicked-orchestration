@@ -27,13 +27,15 @@
 pub mod domain;
 pub mod gate;
 pub mod reducer;
+pub mod runner;
 pub mod transitions;
 
-pub use domain::{Phase, PhaseStatus, Workflow};
+pub use domain::{Phase, PhaseStatus, Workflow, WorkflowStatus};
 pub use gate::{apply_gate, resolve_gate, GateOutcome, EV_PHASE_TRANSITIONED};
 pub use reducer::{
     apply_event, get_phase, is_processed, put_phase, ApplyOutcome, Event, Transition,
 };
+pub use runner::{advance, create_workflow, get_workflow, AdvanceOutcome};
 pub use transitions::{emitted_event_type_for, is_legal_transition, ALLOWED_TRANSITIONS};
 
 /// Crate identity smoke.
@@ -364,6 +366,193 @@ mod tests {
             get_phase(&s, phase_id).unwrap().unwrap().status,
             PhaseStatus::GateRunning,
             "absence of a verdict must NEVER silent-approve — it stays gate_running"
+        );
+    }
+
+    // ── Runner: multi-stage workflow advance ──────────────────────────────────────
+
+    /// Three-phase workflow walks all the way through: each phase is driven to Approved via
+    /// the gate, then `advance` moves the cursor and opens the next phase.
+    #[test]
+    fn runner_three_phase_workflow_advances_to_complete() {
+        let mut s = store();
+        let wf = create_workflow(
+            &mut s,
+            "wf-run",
+            "Run",
+            &[
+                ("wf-run:design", "Design"),
+                ("wf-run:build", "Build"),
+                ("wf-run:review", "Review"),
+            ],
+        )
+        .unwrap();
+        assert_eq!(wf.phases.len(), 3);
+        assert_eq!(wf.current_index, 0);
+
+        // Phase 0 is InProgress after create_workflow.
+        let p0 = get_phase(&s, "wf-run:design").unwrap().unwrap();
+        assert_eq!(p0.status, PhaseStatus::InProgress);
+
+        // Drive phase 0 through the gate to Approved.
+        phase_gate_to_approved(&mut s, "wf-run:design", "gate-0");
+        let out = advance(&mut s, "wf-run").unwrap();
+        assert!(
+            matches!(&out, AdvanceOutcome::Advanced { to_phase_id, .. } if to_phase_id == "wf-run:build"),
+            "expected Advanced to build, got {out:?}"
+        );
+
+        // Phase 1 is open.
+        assert_eq!(
+            get_phase(&s, "wf-run:build").unwrap().unwrap().status,
+            PhaseStatus::InProgress
+        );
+        assert_eq!(
+            get_workflow(&s, "wf-run").unwrap().unwrap().current_index,
+            1
+        );
+
+        // Drive phase 1.
+        phase_gate_to_approved(&mut s, "wf-run:build", "gate-1");
+        let out = advance(&mut s, "wf-run").unwrap();
+        assert!(
+            matches!(&out, AdvanceOutcome::Advanced { to_phase_id, .. } if to_phase_id == "wf-run:review")
+        );
+
+        // Drive final phase.
+        phase_gate_to_approved(&mut s, "wf-run:review", "gate-2");
+        let out = advance(&mut s, "wf-run").unwrap();
+        assert_eq!(out, AdvanceOutcome::Complete);
+
+        let wf_final = get_workflow(&s, "wf-run").unwrap().unwrap();
+        assert_eq!(wf_final.status, WorkflowStatus::Complete);
+    }
+
+    /// A rejected phase halts the workflow — subsequent `advance` calls return `Failed`.
+    #[test]
+    fn runner_rejected_phase_halts_workflow() {
+        let mut s = store();
+        create_workflow(
+            &mut s,
+            "wf-reject",
+            "Reject",
+            &[("wf-reject:build", "Build"), ("wf-reject:deploy", "Deploy")],
+        )
+        .unwrap();
+
+        // Phase is InProgress after create_workflow. Drive to GateRunning then deny.
+        apply_event(
+            &mut s,
+            &Event::transition("rfg-r", "wf-reject:build", PhaseStatus::ReadyForGate),
+        )
+        .unwrap();
+        apply_event(
+            &mut s,
+            &Event::transition("gr-r", "wf-reject:build", PhaseStatus::GateRunning),
+        )
+        .unwrap();
+        apply_gate(
+            &mut s,
+            "wf-reject:build",
+            Some(&claim(Decision::Deny, &[])),
+            "gate-deny",
+        )
+        .unwrap();
+
+        let out = advance(&mut s, "wf-reject").unwrap();
+        assert_eq!(
+            out,
+            AdvanceOutcome::Failed {
+                phase_id: "wf-reject:build".into()
+            }
+        );
+        // Calling advance again returns the same Failed outcome (idempotent).
+        let out2 = advance(&mut s, "wf-reject").unwrap();
+        assert_eq!(out2, out);
+        // Phase 1 was never opened.
+        assert!(get_phase(&s, "wf-reject:deploy").unwrap().is_none());
+    }
+
+    /// A phase awaiting deliverables pauses the workflow without advancing the cursor.
+    #[test]
+    fn runner_awaiting_deliverables_pauses_workflow() {
+        let mut s = store();
+        create_workflow(
+            &mut s,
+            "wf-await",
+            "Await",
+            &[("wf-await:design", "Design"), ("wf-await:build", "Build")],
+        )
+        .unwrap();
+
+        // Advance phase to AwaitingDeliverables via the reducer.
+        apply_event(
+            &mut s,
+            &Event::transition(
+                "ev-await",
+                "wf-await:design",
+                PhaseStatus::AwaitingDeliverables,
+            ),
+        )
+        .unwrap();
+
+        let out = advance(&mut s, "wf-await").unwrap();
+        assert_eq!(
+            out,
+            AdvanceOutcome::AwaitingHuman {
+                phase_id: "wf-await:design".into()
+            }
+        );
+        assert_eq!(
+            get_workflow(&s, "wf-await").unwrap().unwrap().status,
+            WorkflowStatus::AwaitingHuman
+        );
+        // Cursor did not move; phase 1 not opened.
+        assert_eq!(
+            get_workflow(&s, "wf-await").unwrap().unwrap().current_index,
+            0
+        );
+        assert!(get_phase(&s, "wf-await:build").unwrap().is_none());
+    }
+
+    /// Empty workflow is immediately Complete.
+    #[test]
+    fn runner_empty_workflow_is_complete() {
+        let mut s = store();
+        let wf = create_workflow(&mut s, "wf-empty", "Empty", &[] as &[(&str, &str)]).unwrap();
+        assert_eq!(wf.status, WorkflowStatus::Complete);
+        let out = advance(&mut s, "wf-empty").unwrap();
+        assert_eq!(out, AdvanceOutcome::Complete);
+    }
+
+    // Helpers for runner tests ─────────────────────────────────────────────────
+
+    /// Drive a phase from InProgress all the way through to gate_running, then Approved.
+    fn phase_gate_to_approved(s: &mut SqliteStore, phase_id: &str, gate_event_id: &str) {
+        // InProgress → ReadyForGate → GateRunning (reducer transitions)
+        apply_event(
+            s,
+            &Event::transition(
+                format!("{gate_event_id}-rfg"),
+                phase_id,
+                PhaseStatus::ReadyForGate,
+            ),
+        )
+        .unwrap();
+        apply_event(
+            s,
+            &Event::transition(
+                format!("{gate_event_id}-gr"),
+                phase_id,
+                PhaseStatus::GateRunning,
+            ),
+        )
+        .unwrap();
+        let c = claim(Decision::Allow, &[]);
+        apply_gate(s, phase_id, Some(&c), gate_event_id).unwrap();
+        assert_eq!(
+            get_phase(s, phase_id).unwrap().unwrap().status,
+            PhaseStatus::Approved
         );
     }
 

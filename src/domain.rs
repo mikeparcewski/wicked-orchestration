@@ -14,6 +14,18 @@ use wicked_apps_core::{
     SYMBOL_SCHEME, WORKFLOW,
 };
 
+/// Lifecycle status of a `Workflow` — updated by the runner as phases advance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowStatus {
+    #[default]
+    Running,
+    /// Current phase is `AwaitingDeliverables` — a human must unblock it.
+    AwaitingHuman,
+    Complete,
+    Failed,
+}
+
 /// The phase state machine's states (ARCHITECTURE §4 / `reducer.mjs`). Serialized to/from
 /// `Node.metadata` and the bus as the prototype's snake_case strings (`pending`, `in_progress`, …)
 /// so the projection stays wire-compatible with the Node-era contract and the `ALLOWED_TRANSITIONS`
@@ -59,18 +71,42 @@ impl PhaseStatus {
     }
 }
 
-/// An orchestration workflow — a container for phases (`wicked-orchestration`).
+/// An orchestration workflow — an ordered sequence of phases on the shared estate store.
 ///
-/// Persisted as `Node(kind=Other("workflow"))`; `id` is the load-bearing identity (NOT recoverable
-/// from the node name), so it is stored in metadata and used as the node `name`.
+/// Persisted as `Node(kind=Other("workflow"))`; `id` is the load-bearing identity. The ordered
+/// `phases` list (phase id + display name pairs) and the `current_index` cursor drive the
+/// runner's advance logic. Backward-compat: nodes without the new fields default to empty/0/Running
+/// on read so older persisted workflows still deserialize cleanly.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Workflow {
     pub id: String,
+    /// Human-readable label (defaults to `id` when constructed via `new`).
+    pub name: String,
+    /// Ordered `(phase_id, phase_name)` pairs. The runner opens each in sequence.
+    pub phases: Vec<(String, String)>,
+    /// Index into `phases` of the phase currently being executed.
+    pub current_index: usize,
+    pub status: WorkflowStatus,
 }
 
 impl Workflow {
+    /// Minimal constructor — no phases, used by tests and callers that populate phases separately.
     pub fn new(id: impl Into<String>) -> Self {
-        Self { id: id.into() }
+        let id = id.into();
+        Self {
+            name: id.clone(),
+            id,
+            phases: Vec::new(),
+            current_index: 0,
+            status: WorkflowStatus::Running,
+        }
+    }
+
+    /// The id of the phase currently being driven, or `None` if there are no phases.
+    pub fn current_phase_id(&self) -> Option<&str> {
+        self.phases
+            .get(self.current_index)
+            .map(|(id, _)| id.as_str())
     }
 }
 
@@ -84,12 +120,28 @@ impl ToNode for Workflow {
         let mut node = Node::new(
             symbol,
             NodeKind::Other(WORKFLOW.to_string()),
-            self.id.clone(),
+            self.name.clone(),
             Language::new(SYMBOL_SCHEME),
             Location::new(format!("{WORKFLOW}/{}", self.id), Span::ZERO),
         );
-        node.metadata
-            .insert("id".to_string(), serde_json::Value::String(self.id.clone()));
+        let m = &mut node.metadata;
+        m.insert("id".to_string(), serde_json::Value::String(self.id.clone()));
+        m.insert(
+            "name".to_string(),
+            serde_json::Value::String(self.name.clone()),
+        );
+        m.insert(
+            "phases".to_string(),
+            serde_json::to_value(&self.phases).expect("Vec<(String,String)> serializes"),
+        );
+        m.insert(
+            "current_index".to_string(),
+            serde_json::Value::Number((self.current_index as u64).into()),
+        );
+        m.insert(
+            "status".to_string(),
+            serde_json::to_value(self.status).expect("WorkflowStatus serializes"),
+        );
         node
     }
 }
@@ -100,13 +152,35 @@ impl FromNode for Workflow {
             NodeKind::Other(k) if k == WORKFLOW => {}
             other => anyhow::bail!("expected NodeKind::Other({WORKFLOW:?}), got {other:?}"),
         }
-        let id = node
-            .metadata
+        let m = &node.metadata;
+        let id = m
             .get("id")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Workflow node missing string metadata key `id`"))?
             .to_string();
-        Ok(Workflow { id })
+        let name = m
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&id)
+            .to_string();
+        let phases: Vec<(String, String)> = match m.get("phases") {
+            Some(v) => serde_json::from_value(v.clone())
+                .map_err(|e| anyhow::anyhow!("Workflow node `phases` invalid: {e}"))?,
+            None => Vec::new(),
+        };
+        let current_index = m.get("current_index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+        let status: WorkflowStatus = match m.get("status") {
+            Some(v) => serde_json::from_value(v.clone())
+                .map_err(|e| anyhow::anyhow!("Workflow node `status` invalid: {e}"))?,
+            None => WorkflowStatus::Running,
+        };
+        Ok(Workflow {
+            id,
+            name,
+            phases,
+            current_index,
+            status,
+        })
     }
 }
 
